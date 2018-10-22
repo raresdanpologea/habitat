@@ -74,7 +74,7 @@ set_hab_binary() {
     # ActiveTarget. Otherwise, if we were to attempt to install an
     # `x86_64-linux-kernel2` package with the `hab` on our path, it
     # would result in an error and fail the build.
-    if [[ "$BUILD_PKG_TARGET" == "x86_64-linux-kernel2" ]]; then
+    if [[ "${BUILD_PKG_TARGET:-}" == "x86_64-linux-kernel2" ]]; then
         install_hab_kernel2_binary
         hab_binary="$(which hab-x86_64-linux-kernel2)"
     else 
