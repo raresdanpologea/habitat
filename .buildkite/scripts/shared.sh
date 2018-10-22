@@ -93,8 +93,8 @@ set_hab_binary() {
         # Note that we are explicitly not binlinking here; this is to
         # prevent accidentally polluting the builder for any future
         # runs that may take place on it.
-        sudo hab pkg install "${hab_ident}"
-        sudo hab pkg install "$(buildkite-agent meta-data get studio-version)"
+        sudo ${hab_binary} pkg install "${hab_ident}"
+        sudo ${hab_binary} pkg install "$(buildkite-agent meta-data get studio-version)"
         hab_binary="/hab/pkgs/${hab_ident}/bin/hab"
         declare -g new_studio=1
     else
