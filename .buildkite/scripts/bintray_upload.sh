@@ -44,8 +44,7 @@ echo "--- :habicat: Uploading core/hab to Bintray"
 # Windows artifacts from Linux machines.)
 sudo ${hab_binary} pkg install core/hab --channel="${channel}"
 
-# TODO (SM): Should we specify Target for all of our platforms? This
-# is the only place where we can't infer the default. 
+# TODO (SM): Should we specify Target for all of our platforms? 
 #
 # Something that might be useful is a --option to the hab cli that would
 # report the ActiveTarget. 

@@ -53,6 +53,7 @@ case "${component}" in
     "hab")
         echo "--- :buildkite: Storing artifact ${pkg_ident:?}"
         # buildkite-agent artifact upload "results/${pkg_artifact}"
+        echo "Setting hab-version-${pkg_target} metadata"
         buildkite-agent meta-data set "hab-version-${pkg_target:?}" "${pkg_ident:?}"
         buildkite-agent meta-data set "hab-release-${pkg_target:?}" "${pkg_release:?}"
         buildkite-agent meta-data set "hab-artifact-${pkg_target:?}" "${pkg_artifact:?}"
@@ -60,7 +61,8 @@ case "${component}" in
     "studio")
         echo "--- :buildkite: Recording metadata for ${pkg_ident}"
         # buildkite-agent artifact upload "results/${pkg_artifact}"
-        buildkite-agent meta-data set "studio-version-${pkg-target}" "${pkg_ident}"
+        echo "Setting studio-version-${pkg_target} metadata"
+        buildkite-agent meta-data set "studio-version-${pkg-target:?}" "${pkg_ident}"
         ;;
     *)
         ;;
