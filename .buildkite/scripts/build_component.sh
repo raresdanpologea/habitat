@@ -4,6 +4,7 @@ set -euo pipefail
 
 source .buildkite/scripts/shared.sh
 
+
 ########################################################################
 
 # `component` should be the subdirectory name in `components` where a
@@ -52,14 +53,14 @@ case "${component}" in
     "hab")
         echo "--- :buildkite: Storing artifact ${pkg_ident:?}"
         # buildkite-agent artifact upload "results/${pkg_artifact}"
-        buildkite-agent meta-data set "hab-version" "${pkg_ident:?}"
+        buildkite-agent meta-data set "hab-version-${pkg_target:?}" "${pkg_ident:?}"
         buildkite-agent meta-data set "hab-release-${pkg_target:?}" "${pkg_release:?}"
         buildkite-agent meta-data set "hab-artifact-${pkg_target:?}" "${pkg_artifact:?}"
         ;;
     "studio")
         echo "--- :buildkite: Recording metadata for ${pkg_ident}"
         # buildkite-agent artifact upload "results/${pkg_artifact}"
-        buildkite-agent meta-data set "studio-version" "${pkg_ident}"
+        buildkite-agent meta-data set "studio-version-${pkg-target}" "${pkg_ident}"
         ;;
     *)
         ;;
