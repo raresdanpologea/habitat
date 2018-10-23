@@ -108,6 +108,8 @@ set_hab_binary() {
         declare -g new_studio=1
     else
         echo "Buildkite metadata NOT found; using previously-installed hab binary: $hab_binary"
+        echo "$(buildkite meta-data get hab-version-${pkg_target})"
+        echo "$(buildkite meta-data get studio-version-${pkg_target})"
         echo "Checked: hab-version-${pkg_target:?} and studio-version-${pkg_target:?}"
     fi
     set +x 
