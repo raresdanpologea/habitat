@@ -19,7 +19,6 @@ if [[ "${FAKE_RELEASE_TAG:-}" || "${BUILDKITE_TAG}" ]]; then
     channel="rc-${release}"
     echo "Release channel is '${channel}'"
     echo "## Habitat Release _${release}_" | buildkite-agent annotate --context "release-manifest"
-    echo "## DEBUG LOG " | buildkite-agent annotate --context "debug-log"
 
     buildkite-agent meta-data set "release-channel" "${channel}"
 
