@@ -89,6 +89,7 @@ set_hab_binary() {
         pkg_target="x86_64-linux"
     fi 
 
+    set -x
     if buildkite-agent meta-data exists hab-version-${pkg_target} &&
             buildkite-agent meta-data exists studio-version-${pkg_target}; then
         echo "Buildkite metadata found; installing new versions of 'core/hab' and 'core/hab-studio'"
@@ -109,6 +110,7 @@ set_hab_binary() {
         echo "Buildkite metadata NOT found; using previously-installed hab binary: $hab_binary"
         echo "Checked: hab-version-${pkg_target:?} and studio-version-${pkg_target:?}"
     fi
+    set +x 
     declare -g hab_binary
     echo "--- :habicat: Using $(${hab_binary} --version)"
 }
