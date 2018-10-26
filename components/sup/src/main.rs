@@ -202,67 +202,31 @@ fn sub_term(m: &ArgMatches) -> Result<()> {
 ////////////////////////////////////////////////////////////////////////
 
 fn mgrcfg_from_matches(m: &ArgMatches) -> Result<ManagerConfig> {
-    let mut cfg = ManagerConfig::default();
-    cfg.auto_update = m.is_present("AUTO_UPDATE");
-    cfg.update_url = bldr_url(m);
-    cfg.update_channel = channel(m);
+    let mut cfg = ManagerConfig {
+        auto_update: m.is_present("AUTO_UPDATE"),
+        update_url: bldr_url(m),
+        update_channel: channel(m),
+        http_disable: m.is_present("HTTP_DISABLE"),
+        organization: m.value_of("ORGANIZATION").map(|org| org.to_string()),
+        gossip_permanent: m.is_present("PERMANENT_PEER"),
+        ring_key: get_ring_key(m)?,
+        ..Default::default()
+    };
     if let Some(addr_str) = m.value_of("LISTEN_GOSSIP") {
         cfg.gossip_listen = GossipListenAddr::from_str(addr_str)?;
     }
     if let Some(addr_str) = m.value_of("LISTEN_HTTP") {
         cfg.http_listen = http_gateway::ListenAddr::from_str(addr_str)?;
     }
-    cfg.http_disable = m.is_present("HTTP_DISABLE");
     if let Some(addr_str) = m.value_of("LISTEN_CTL") {
-        cfg.ctl_listen =
-            SocketAddr::from_str(addr_str).unwrap_or_else(|_err| protocol::ctl::default_addr());
+        cfg.ctl_listen = SocketAddr::from_str(addr_str)?;
     }
-    cfg.organization = m.value_of("ORGANIZATION").map(|org| org.to_string());
-    cfg.gossip_permanent = m.is_present("PERMANENT_PEER");
-    // TODO fn: Clean this up--using a for loop doesn't feel good however an iterator was
-    // causing a lot of developer/compiler type confusion
-    let mut gossip_peers: Vec<SocketAddr> = Vec::new();
     if let Some(peers) = m.values_of("PEER") {
-        for peer in peers {
-            let peer_addr = if peer.find(':').is_some() {
-                peer.to_string()
-            } else {
-                format!("{}:{}", peer, GOSSIP_DEFAULT_PORT)
-            };
-            let addrs: Vec<SocketAddr> = match peer_addr.to_socket_addrs() {
-                Ok(addrs) => addrs.collect(),
-                Err(e) => {
-                    outputln!("Failed to resolve peer: {}", peer_addr);
-                    return Err(sup_error!(Error::NameLookup(e)));
-                }
-            };
-            let addr: SocketAddr = addrs[0];
-            gossip_peers.push(addr);
-        }
+        cfg.gossip_peers = get_peers(peers)?;
     }
-    cfg.gossip_peers = gossip_peers;
     if let Some(watch_peer_file) = m.value_of("PEER_WATCH_FILE") {
         cfg.watch_peer_file = Some(String::from(watch_peer_file));
     }
-    cfg.ring_key = match m.value_of("RING") {
-        Some(val) => Some(SymKey::get_latest_pair_for(
-            &val,
-            &default_cache_key_path(None),
-        )?),
-        None => match henv::var(RING_KEY_ENVVAR) {
-            Ok(val) => {
-                let (key, _) = SymKey::write_file_from_str(&val, &default_cache_key_path(None))?;
-                Some(key)
-            }
-            Err(_) => match henv::var(RING_ENVVAR) {
-                Ok(val) => Some(SymKey::get_latest_pair_for(
-                    &val,
-                    &default_cache_key_path(None),
-                )?),
-                Err(_) => None,
-            },
-        },
-    };
     if let Some(events) = m.value_of("EVENTS") {
         cfg.eventsrv_group = ServiceGroup::from_str(events).ok().map(Into::into);
     }
@@ -271,6 +235,51 @@ fn mgrcfg_from_matches(m: &ArgMatches) -> Result<ManagerConfig> {
 
 // Various CLI Parsing Functions
 ////////////////////////////////////////////////////////////////////////
+
+fn get_peers(peers: clap::Values) -> Result<Vec<SocketAddr>> {
+    // TODO fn: Clean this up--using a for loop doesn't feel good however an iterator was
+    // causing a lot of developer/compiler type confusion
+    let mut gossip_peers = Vec::new();
+    for peer in peers {
+        let peer_addr = if peer.find(':').is_some() {
+            peer.to_string()
+        } else {
+            format!("{}:{}", peer, GOSSIP_DEFAULT_PORT)
+        };
+        let addrs: Vec<SocketAddr> = match peer_addr.to_socket_addrs() {
+            Ok(addrs) => addrs.collect(),
+            Err(e) => {
+                outputln!("Failed to resolve peer: {}", peer_addr);
+                return Err(sup_error!(Error::NameLookup(e)));
+            }
+        };
+        let addr: SocketAddr = addrs[0];
+        gossip_peers.push(addr);
+    }
+    Ok(gossip_peers)
+}
+
+fn get_ring_key(m: &ArgMatches) -> Result<Option<SymKey>> {
+    match m.value_of("RING") {
+        Some(val) => {
+            let key = SymKey::get_latest_pair_for(&val, &default_cache_key_path(None))?;
+            Ok(Some(key))
+        }
+        None => match henv::var(RING_KEY_ENVVAR) {
+            Ok(val) => {
+                let (key, _) = SymKey::write_file_from_str(&val, &default_cache_key_path(None))?;
+                Ok(Some(key))
+            }
+            Err(_) => match henv::var(RING_ENVVAR) {
+                Ok(val) => {
+                    let key = SymKey::get_latest_pair_for(&val, &default_cache_key_path(None))?;
+                    Ok(Some(key))
+                }
+                Err(_) => Ok(None),
+            },
+        },
+    }
+}
 
 /// Resolve a Builder URL. Taken from CLI args, the environment, or
 /// (failing those) a default value.
@@ -463,4 +472,150 @@ fn update_svc_load_from_input(m: &ArgMatches, msg: &mut protocol::ctl::SvcLoad) 
     msg.topology = get_topology_from_input(m).map(|v| v as i32);
     msg.update_strategy = get_strategy_from_input(m).map(|v| v as i32);
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    mod manager_config {
+
+        use super::*;
+        use std::iter::FromIterator;
+
+        fn config_from_cmd_str(cmd: &str) -> ManagerConfig {
+            let cmd_vec = Vec::from_iter(cmd.split_whitespace());
+            let matches = cli()
+                .get_matches_from_safe(cmd_vec)
+                .expect("Error while getting matches");
+            let (_, sub_matches) = matches.subcommand();
+            let sub_matches = sub_matches.expect("Error getting sub command matches");
+
+            mgrcfg_from_matches(&sub_matches).expect("Could not get config")
+        }
+
+        #[test]
+        fn auto_update_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --auto-update");
+            assert_eq!(config.auto_update, true);
+
+            let config = config_from_cmd_str("hab-sup run");
+            assert_eq!(config.auto_update, false);
+        }
+
+        #[test]
+        fn update_url_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run -u http://fake.example.url");
+            assert_eq!(config.update_url, "http://fake.example.url");
+
+            let config = config_from_cmd_str("hab-sup run");
+            assert_eq!(config.update_url, default_bldr_url());
+        }
+
+        #[test]
+        fn update_channel_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --channel unstable");
+            assert_eq!(config.update_channel, "unstable");
+
+            let config = config_from_cmd_str("hab-sup run");
+            assert_eq!(config.update_channel, "stable");
+        }
+
+        #[test]
+        fn gossip_listen_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --listen-gossip 1.1.1.1:1111");
+            let expected_addr = GossipListenAddr::from_str("1.1.1.1:1111")
+                .expect("Could not create GossipListenAddr");
+            assert_eq!(config.gossip_listen, expected_addr);
+
+            let config = config_from_cmd_str("hab-sup run");
+            let expected_addr = GossipListenAddr::from_str("0.0.0.0:9638")
+                .expect("Could not create GossipListenAddr");
+            assert_eq!(config.gossip_listen, expected_addr);
+        }
+
+        #[test]
+        fn http_listen_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --listen-http 2.2.2.2:2222");
+            let expected_addr = http_gateway::ListenAddr::from_str("2.2.2.2:2222")
+                .expect("Could not create http listen addr");
+            assert_eq!(config.http_listen, expected_addr);
+
+            let config = config_from_cmd_str("hab-sup run");
+            let expected_addr = http_gateway::ListenAddr::from_str("0.0.0.0:9631")
+                .expect("Could not create http listen addr");
+            assert_eq!(config.http_listen, expected_addr);
+        }
+
+        #[test]
+        fn http_disable_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --http-disable");
+            assert_eq!(config.http_disable, true);
+
+            let config = config_from_cmd_str("hab-sup run");
+            assert_eq!(config.http_disable, false);
+        }
+
+        #[test]
+        fn ctl_listen_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --listen-ctl 3.3.3.3:3333");
+            let expected_addr =
+                SocketAddr::from_str("3.3.3.3:3333").expect("Could not create ctl listen addr");
+            assert_eq!(config.ctl_listen, expected_addr);
+
+            let config = config_from_cmd_str("hab-sup run");
+            let expected_addr = protocol::ctl::default_addr();
+            assert_eq!(config.ctl_listen, expected_addr);
+        }
+
+        #[test]
+        fn organization_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --org foobar");
+            assert_eq!(config.organization, Some("foobar".to_string()));
+
+            let config = config_from_cmd_str("hab-sup run");
+            // Should this be None? Help says the default should be "default".
+            assert_eq!(config.organization, None);
+        }
+
+        #[test]
+        fn gossip_permanent_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --permanent-peer");
+            assert_eq!(config.gossip_permanent, true);
+
+            let config = config_from_cmd_str("hab-sup run");
+            assert_eq!(config.gossip_permanent, false);
+        }
+
+        #[test]
+        fn peers_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --peer 1.1.1.1:1 2.2.2.2:1 3.3.3.3:1");
+            let expected_peers: Vec<SocketAddr> = vec!["1.1.1.1:1", "2.2.2.2:1", "3.3.3.3:1"]
+                .into_iter()
+                .flat_map(|peer| peer.to_socket_addrs().expect("Failed getting addrs"))
+                .collect();
+            assert_eq!(config.gossip_peers, expected_peers);
+
+            let config = config_from_cmd_str("hab-sup run --peer 1.1.1.1 2.2.2.2 3.3.3.3");
+            let expected_peers: Vec<SocketAddr> = vec!["1.1.1.1", "2.2.2.2", "3.3.3.3"]
+                .into_iter()
+                .map(|peer| format!("{}:{}", peer, GOSSIP_DEFAULT_PORT))
+                .flat_map(|peer| peer.to_socket_addrs().expect("Failed getting addrs"))
+                .collect();
+            assert_eq!(config.gossip_peers, expected_peers);
+        }
+
+        #[test]
+        fn watch_peer_file_should_be_set() {
+            let config = config_from_cmd_str("hab-sup run --peer-watch-file foobar");
+            assert_eq!(config.watch_peer_file, Some("foobar".to_string()));
+        }
+
+        #[test]
+        fn events_is_set() {
+            let config = config_from_cmd_str("hab-sup run --events event.service");
+            assert!(config.eventsrv_group.is_some());
+        }
+
+    }
 }
