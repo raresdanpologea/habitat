@@ -26,11 +26,14 @@ steps:
     command: .buildkite/scripts/build_windows_release.ps1
     agents:
       queue: default-windows
+    env:
+      HAB_BLDR_CHANNEL: unstable
     plugins:
       https://github.com/chef/docker-buildkite-plugin#snappj/add-support-for-windows-images:
         image: "chefes/windows-base:latest"
         windows-image: true
-
+        environment:
+          - HAB_BLDR_CHANNEL
 
   - label: ":mac: :habicat: core/hab"
     command: .buildkite/scripts/build_mac_release.sh
