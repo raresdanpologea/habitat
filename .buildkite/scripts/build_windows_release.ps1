@@ -13,8 +13,8 @@ New-Item -ItemType directory -Path C:\build
 Copy-Item -Path C:\workdir\* -Destination C:\build -Recurse
 
 Write-Host "--- Running build"
-cd C:\build\components\hab
-Invoke-Expression "hab pkg build ." -ErrorAction Stop
+cd C:\build
+Invoke-Expression "hab pkg build components\hab" -ErrorAction Stop
 
 # Invoke-Expression "cargo build --release " -ErrorAction Stop
 
