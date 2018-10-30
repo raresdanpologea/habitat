@@ -5,6 +5,9 @@ Set-PSDebug -Trace 1
 
 $Env:HAB_BLDR_CHANNEL="unstable"
 
+Write-Host "--- Setup keys TODO: pull from builder, put in a helper"
+Invoke-Expression "hab origin key generate core" -ErrorAction Stop
+
 Write-Host "--- Install latest habitat binary"
 Invoke-Expression "choco install habitat --confirm" -ErrorAction Stop
 
