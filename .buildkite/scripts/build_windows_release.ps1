@@ -12,12 +12,13 @@ Write-Host "--- Moving build folder to new location"
 New-Item -ItemType directory -Path C:\build
 Copy-Item -Path C:\workdir\* -Destination C:\build -Recurse
 
+cd C:\build
+
 Write-Host "--- Setup keys TODO: pull from builder, put in a helper"
 Invoke-Expression "hab origin key generate core" -ErrorAction Stop
 
 Write-Host "--- Running build"
-cd C:\build
-Invoke-Expression "hab pkg build components\hab" -ErrorAction Stop
+Invoke-Expression "hab pkg build components\hab -k core" -ErrorAction Stop
 
 # Invoke-Expression "cargo build --release " -ErrorAction Stop
 
