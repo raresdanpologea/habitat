@@ -235,8 +235,9 @@ impl Worker {
                                     path.display(),
                                     e,
                                 );
+
                                 return;
-                            };
+                            }
                         }
 
                         // If we receive a message on the channel, we stop.
@@ -248,6 +249,7 @@ impl Worker {
                                 "UserConfigWatcher({}) worker thread failed to receive on channel",
                                 path.display(),
                             );
+
                             break;
                         }
                     }

@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use error::{Error, Result};
 use notify;
-use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RawEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
 use manager::debug::{IndentedStructFormatter, IndentedToString};
 
@@ -495,7 +495,7 @@ fn simplify_abs_path(abs_path: &PathBuf) -> PathBuf {
 // `EventAction`s are high-level actions to be performed in response to
 // filesystem events.
 //
-// We translate `DebouncedEvent` to `EventAction`, and `EventAction`
+// We translate `RawEvent` to `EventAction`, and `EventAction`
 // to a list of `PathsAction`s.
 #[derive(Debug)]
 enum EventAction {
@@ -1194,7 +1194,7 @@ pub struct FileWatcher<C: Callbacks, W: Watcher> {
     // The watcher itself.
     watcher: W,
     // A channel for receiving events.
-    rx: Receiver<DebouncedEvent>,
+    rx: Receiver<RawEvent>,
     // The paths to watch.
     paths: Paths,
     // Path to the file if it existed when we created the watcher.
@@ -1266,8 +1266,10 @@ impl<C: Callbacks, W: Watcher> FileWatcher<C, W> {
         P: Into<PathBuf>,
     {
         let (tx, rx) = channel();
-        let mut watcher = W::new(tx, Duration::from_millis(WATCHER_DELAY_MS))
-            .map_err(|err| sup_error!(Error::NotifyCreateError(err)))?;
+        // let mut watcher = W::new(tx, Duration::from_millis(WATCHER_DELAY_MS))
+        //     .map_err(|err| sup_error!(Error::NotifyCreateError(err)))?;
+        let mut watcher =
+            W::new_raw(tx).map_err(|err| sup_error!(Error::NotifyCreateError(err)))?;
         let start_path = Self::watcher_path(path.into())?;
         // Initialize the Paths struct, which will hold all state
         // relative to file watching.
@@ -1352,16 +1354,20 @@ impl<C: Callbacks, W: Watcher> FileWatcher<C, W> {
         self.initial_real_file = None;
 
         match self.rx.try_recv() {
-            Ok(e) => self.handle_event(e),
+            Ok(e) => {
+                Ok(())
+                // JB TODO: uncomment this at some point lol
+                // self.handle_event(e),
+            }
             Err(TryRecvError::Empty) => Ok(()),
             Err(e) => Err(sup_error!(Error::TryRecvError(e))),
         }
     }
 
-    fn handle_event(&mut self, event: DebouncedEvent) -> Result<()> {
+    fn handle_event(&mut self, event: RawEvent) -> Result<()> {
         let mut actions = VecDeque::new();
         debug!("in handle_event fn");
-        debug!("got debounced event: {:?}", event);
+        debug!("got raw event: {:?}", &event);
 
         self.emit_directories_for_event(&event);
 
@@ -1431,7 +1437,7 @@ impl<C: Callbacks, W: Watcher> FileWatcher<C, W> {
         Ok(())
     }
 
-    fn emit_directories_for_event(&mut self, event: &DebouncedEvent) {
+    fn emit_directories_for_event(&mut self, event: &RawEvent) {
         let paths = match event {
             &DebouncedEvent::NoticeWrite(ref p)
             | &DebouncedEvent::Write(ref p)
@@ -1480,7 +1486,7 @@ impl<C: Callbacks, W: Watcher> FileWatcher<C, W> {
     }
 
     // Maps `EventAction`s to one or more lower-level `PathsAction`s.
-    fn get_paths_actions(paths: &Paths, event: DebouncedEvent) -> Vec<PathsAction> {
+    fn get_paths_actions(paths: &Paths, event: RawEvent) -> Vec<PathsAction> {
         let mut actions = Vec::new();
         for event_action in Self::get_event_actions(paths, event) {
             debug!("event_action: {}", dits!(event_action));
@@ -1550,7 +1556,7 @@ impl<C: Callbacks, W: Watcher> FileWatcher<C, W> {
     }
 
     // Maps filesystem events to high-level actions.
-    fn get_event_actions(paths: &Paths, event: DebouncedEvent) -> Vec<EventAction> {
+    fn get_event_actions(paths: &Paths, event: RawEvent) -> Vec<EventAction> {
         // Usual actions on files and resulting events (assuming that
         // a and b are in the same directory which we watch)
         // touch a - Create(a)
@@ -1667,6 +1673,17 @@ impl<C: Callbacks, W: Watcher> FileWatcher<C, W> {
     }
 }
 
+impl<C: Callbacks, W: Watcher> Drop for FileWatcher<C, W> {
+    fn drop(&mut self) {
+        let directories = self.paths.generate_watch_paths();
+
+        // Start watcher on each path.
+        for directory in directories {
+            let _ = self.watcher.unwatch(&directory); // we don't care about the result, since we're dropping anyway
+        }
+    }
+}
+
 // For now it's unix only, as we are only testing one k8s related
 // scenario, that involves symlinks.
 #[cfg(all(unix, test))]
@@ -1683,7 +1700,7 @@ mod tests {
     use std::time::Duration;
 
     use notify;
-    use notify::{DebouncedEvent, RawEvent, RecommendedWatcher, RecursiveMode, Watcher};
+    use notify::{RawEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
     use tempdir::TempDir;
 
@@ -2780,7 +2797,7 @@ mod tests {
             })
         }
 
-        fn new(tx: Sender<DebouncedEvent>, d: Duration) -> notify::Result<Self> {
+        fn new(tx: Sender<RawEvent>, d: Duration) -> notify::Result<Self> {
             Ok(TestWatcher {
                 real_watcher: RecommendedWatcher::new(tx, d)?,
                 watched_dirs: HashSet::new(),
