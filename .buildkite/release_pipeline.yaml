@@ -28,7 +28,7 @@ steps:
       queue: default-windows
     plugins:
       https://github.com/chef/docker-buildkite-plugin#snappj/add-support-for-windows-images:
-        image: "chefes/buildkite-windows:latest"
+        image: "chefes/windows-base:latest"
         windows-image: true
 
 
