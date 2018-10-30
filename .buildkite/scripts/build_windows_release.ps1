@@ -20,11 +20,8 @@ Invoke-Expression "hab origin key generate core" -ErrorAction Stop
 Write-Host "--- Running build"
 Invoke-Expression "hab pkg build components\hab -k core" -ErrorAction Stop
 
-# Invoke-Expression "cargo build --release " -ErrorAction Stop
-
-# Write-Host "--- Uploading artifacts"
-# . .\results/last_build.env
-# echo $env
-
+Write-Host "--- Uploading artifacts"
+. .\results/last_build.env
+echo $env
 
 exit $LASTEXITCODE
